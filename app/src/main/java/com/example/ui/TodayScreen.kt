@@ -1,4 +1,5 @@
-package com.example.ui
+                    }
+        package com.example.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -41,7 +43,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.model.DeliveryEntry
 import com.example.model.PaymentMethod
-import com.example.model.RouteExpense
 import com.example.model.SukiCustomer
 import com.example.model.WaterType
 import com.example.viewmodel.WaterRiderViewModel
@@ -55,6 +56,8 @@ fun TodayScreen(
     val customers by viewModel.allCustomers.collectAsState()
     val deliveries by viewModel.deliveriesForDate.collectAsState()
     val expenses by viewModel.expensesForDate.collectAsState()
+    val defaultPurified by viewModel.defaultPurifiedPrice.collectAsState()
+    val defaultAlkaline by viewModel.defaultAlkalinePrice.collectAsState()
     val isMathExpanded by viewModel.isMathExpanded.collectAsState()
     val isBankExpanded by viewModel.isBankTransfersExpanded.collectAsState()
     val isAddExpanded by viewModel.isAddDeliveryExpanded.collectAsState()
@@ -210,6 +213,300 @@ fun TodayScreen(
                                 )
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    formatPeso(bankTransfersToBoss),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Icon(
+                                    imageVector = if (isBankExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Expand bank transfers"
+                                )
+                            }
+                        }
+
+                        AnimatedVisibility(visible = isBankExpanded) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                HorizontalDivider()
+                                if (bankEntries.isEmpty()) {
+                                    Text("Walang bank transfer entry sa napiling petsa.", style = MaterialTheme.typography.bodySmall)
+                                } else {
+                                    bankEntries.forEach { item ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("${item.customerName} (${item.gallons} gals)", style = MaterialTheme.typography.bodyMedium)
+                                            Text(formatPeso(item.amount), fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Inline Quick Log Order Form (bumubuka pababa sa loob ng screen)
+            item {
+                AnimatedVisibility(visible = isAddExpanded) {
+                    InlineLogDeliveryCard(
+                        customers = customers,
+                        defaultPurifiedPrice = defaultPurified,
+                        defaultAlkalinePrice = defaultAlkaline,
+                        onSave = { suki, water, gals, payment, note, priceOverride ->
+                            viewModel.logDelivery(suki, water, gals, payment, note, priceOverride)
+                        },
+                        onCancel = { viewModel.setAddDeliveryExpanded(false) }
+                    )
+                }
+            }
+
+            // Deliveries List or Empty State
+            if (deliveries.isEmpty()) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("Wala pang logged delivery sa petsang ito.", style = MaterialTheme.typography.bodyMedium)
+                            Button(onClick = { viewModel.setAddDeliveryExpanded(true) }) {
+                                Icon(Icons.Default.Add, contentDescription = null)
+                                Text("Log First Order", modifier = Modifier.padding(start = 6.dp))
+                            }
+                        }
+                    }
+                }
+            } else {
+                items(deliveries, key = { it.id }) { entry ->
+                    DeliveryEntryCard(entry = entry)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MathRow(label: String, value: String, bold: Boolean = false) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun DeliveryEntryCard(entry: DeliveryEntry) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(entry.customerName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    "${entry.gallons} gal · ${entry.waterType.name} · ${entry.paymentMethod.name}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Text(
+                formatPeso(entry.amount),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun InlineLogDeliveryCard(
+    customers: List<SukiCustomer>,
+    defaultPurifiedPrice: Double,
+    defaultAlkalinePrice: Double,
+    onSave: (SukiCustomer, WaterType, Int, PaymentMethod, String, Double?) -> Unit,
+    onCancel: () -> Unit
+) {
+    val presetGallons = listOf(25, 30, 35, 40)
+
+    var sukiSearch by remember { mutableStateOf("") }
+    var selectedCustomer by remember { mutableStateOf<SukiCustomer?>(null) }
+    var waterType by remember { mutableStateOf(WaterType.PURIFIED) }
+    var gallonsText by remember { mutableStateOf("25") }
+    var paymentMethod by remember { mutableStateOf(PaymentMethod.CASH) }
+    var unitPriceText by remember { mutableStateOf(defaultPurifiedPrice.toInt().toString()) }
+    var notes by remember { mutableStateOf("") }
+
+    val matchingCustomers = remember(customers, sukiSearch) {
+        val q = sukiSearch.trim()
+        if (q.isEmpty()) customers.take(4)
+        else customers.filter { it.name.contains(q, ignoreCase = true) }.take(5)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Log Delivery Order", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+
+            OutlinedTextField(
+                value = sukiSearch,
+                onValueChange = {
+                    sukiSearch = it
+                    selectedCustomer = null
+                },
+                label = { Text("Type Suki Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (selectedCustomer == null && matchingCustomers.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    matchingCustomers.forEach { suki ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedCustomer = suki
+                                    sukiSearch = suki.name
+                                    val price = if (waterType == WaterType.PURIFIED) {
+                                        if (suki.purifiedPrice > 0.0) suki.purifiedPrice else defaultPurifiedPrice
+                                    } else {
+                                        if (suki.alkalinePrice > 0.0) suki.alkalinePrice else defaultAlkalinePrice
+                                    }
+                                    unitPriceText = price.toInt().toString()
+                                }
+                                .padding(vertical = 6.dp, horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(suki.name, fontWeight = FontWeight.Medium)
+                            Text(suki.customerType.name, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WaterType.entries.forEach { type ->
+                    FilterChip(
+                        selected = waterType == type,
+                        onClick = {
+                            waterType = type
+                            val price = if (type == WaterType.PURIFIED) {
+                                selectedCustomer?.purifiedPrice?.takeIf { it > 0.0 } ?: defaultPurifiedPrice
+                            } else {
+                                selectedCustomer?.alkalinePrice?.takeIf { it > 0.0 } ?: defaultAlkalinePrice
+                            }
+                            unitPriceText = price.toInt().toString()
+                        },
+                        label = { Text(type.name) }
+                    )
+                }
+            }
+
+            // Typeable Gallon Input + Quick Chips (25, 30, 35, 40)
+            OutlinedTextField(
+                value = gallonsText,
+                onValueChange = { gallonsText = it.filter { ch -> ch.isDigit() } },
+                label = { Text("No. of Gallons (Type o Piliin sa Ibaba)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(presetGallons) { preset ->
+                    FilterChip(
+                        selected = gallonsText == preset.toString(),
+                        onClick = { gallonsText = preset.toString() },
+                        label = { Text("$preset gals") }
+                    )
+                }
+            }
+
+            OutlinedTextField(
+                value = unitPriceText,
+                onValueChange = { unitPriceText = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                label = { Text("Price per Gallon (₱)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PaymentMethod.entries.forEach { method ->
+                    FilterChip(
+                        selected = paymentMethod == method,
+                        onClick = { paymentMethod = method },
+                        label = { Text(method.name) }
+                    )
+                }
+            }
+
+            OutlinedTextField(
+                value = notes,
+                onValueChange = { notes = it },
+                label = { Text("Notes (optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                OutlinedButton(onClick = onCancel) {
+                    Text("Cancel")
+                }
+                Spacer(modifier = Modifier.padding(horizontal = 6.dp))
+                Button(
+                    onClick = {
+                        val target = selectedCustomer ?: customers.firstOrNull {
+                            it.name.equals(sukiSearch.trim(), ignoreCase = true)
+                        }
+                        val gals = gallonsText.toIntOrNull() ?: 0
+                        val priceOverride = unitPriceText.toDoubleOrNull()
+                        if (target != null && gals > 0) {
+                            onSave(target, waterType, gals, paymentMethod, notes, priceOverride)
+                        }
+                    }
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null)
+                    Text("Save Order", modifier = Modifier.padding(start = 4.dp))
+                }
+            }
+        }
+    }
+}
+
+fun formatPeso(amount: Double): String =
+    String.format(Locale.US, "₱%,.2f", amount)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     formatPeso(bankTransfersToBoss),
                                     style = MaterialTheme.typography.titleMedium,
