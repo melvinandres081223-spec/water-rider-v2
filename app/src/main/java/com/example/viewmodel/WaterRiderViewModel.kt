@@ -1,4 +1,4 @@
-package com.example.viewmodel
+unpackage com.example.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -46,6 +46,12 @@ class WaterRiderViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _selectedDate = MutableStateFlow(LocalDate.now())
     val selectedDate: StateFlow<LocalDate> = _selectedDate.asStateFlow()
+
+    private val _defaultPurifiedPrice = MutableStateFlow(25.0)
+    val defaultPurifiedPrice: StateFlow<Double> = _defaultPurifiedPrice.asStateFlow()
+
+    private val _defaultAlkalinePrice = MutableStateFlow(35.0)
+    val defaultAlkalinePrice: StateFlow<Double> = _defaultAlkalinePrice.asStateFlow()
 
     private val _commissionRate = MutableStateFlow(8.0)
     val commissionRate: StateFlow<Double> = _commissionRate.asStateFlow()
@@ -144,6 +150,11 @@ class WaterRiderViewModel(application: Application) : AndroidViewModel(applicati
         return if (date == today) "Today (${date.format(formatter)})" else date.format(formatter)
     }
 
+    fun updateDefaultPrices(purified: Double, alkaline: Double) {
+        if (purified >= 0.0) _defaultPurifiedPrice.value = purified
+        if (alkaline >= 0.0) _defaultAlkalinePrice.value = alkaline
+    }
+
     fun toggleMathExpanded() {
         _isMathExpanded.value = !_isMathExpanded.value
     }
@@ -212,15 +223,20 @@ class WaterRiderViewModel(application: Application) : AndroidViewModel(applicati
         waterType: WaterType,
         gallons: Int,
         paymentMethod: PaymentMethod,
-        notes: String = ""
+        notes: String = "",
+        overrideUnitPrice: Double? = null
     ) {
         if (gallons <= 0) return
         viewModelScope.launch {
-            val unitPrice = if (waterType == WaterType.PURIFIED) customer.purifiedPrice else customer.alkalinePrice
+            val basePrice = if (waterType == WaterType.PURIFIED) {
+                if (customer.purifiedPrice > 0.0) customer.purifiedPrice else _defaultPurifiedPrice.value
+            } else {
+                if (customer.alkalinePrice > 0.0) customer.alkalinePrice else _defaultAlkalinePrice.value
+            }
+            val unitPrice = overrideUnitPrice ?: basePrice
             val totalAmount = unitPrice * gallons
             val dateStr = _selectedDate.value.toString()
 
-            // May commission sa Cash at Bank Transfer orders
             val commission = if (paymentMethod == PaymentMethod.UTANG) 0.0 else gallons * _commissionRate.value
             val updatedUtang = if (paymentMethod == PaymentMethod.UTANG) {
                 customer.utangBalance + totalAmount
@@ -277,6 +293,26 @@ class WaterRiderViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun addVale(amount: Double) {
+        if (amount > 0.0) _valeAmount.value += amount
+    }
+
+    fun buildSahodSummary(deliveries: List<DeliveryEntry>): SahodSummary {
+        val paidDeliveries = deliveries.filter { it.paymentMethod != PaymentMethod.UTANG }
+        val totalPaidGallons = paidDeliveries.sumOf { it.gallons }
+        val gross = paidDeliveries.sumOf { it.commissionEarned }
+        val vale = _valeAmount.value
+        return SahodSummary(
+            weekLabel = formatHeaderDate(_selectedDate.value),
+            totalGallonsPaid = totalPaidGallons,
+            commissionRate = _commissionRate.value,
+            grossCommission = gross,
+            valeDeduction = vale,
+            netSahod = gross - vale,
+            unpaidBossBalance = _unpaidBossBalance.value
+        )
+    }
+}
+ addVale(amount: Double) {
         if (amount > 0.0) _valeAmount.value += amount
     }
 
