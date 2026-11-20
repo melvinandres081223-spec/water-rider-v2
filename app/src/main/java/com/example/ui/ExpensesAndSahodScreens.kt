@@ -247,10 +247,14 @@ fun SahodScreen(
 ) {
     val deliveries by viewModel.deliveriesForDate.collectAsState()
     val commissionRate by viewModel.commissionRate.collectAsState()
+    val defaultPurified by viewModel.defaultPurifiedPrice.collectAsState()
+    val defaultAlkaline by viewModel.defaultAlkalinePrice.collectAsState()
     val summary = viewModel.buildSahodSummary(deliveries)
 
     var rateText by remember(commissionRate) { mutableStateOf(commissionRate.toString()) }
     var valeAddText by remember { mutableStateOf("") }
+    var purifiedPriceText by remember(defaultPurified) { mutableStateOf(defaultPurified.toInt().toString()) }
+    var alkalinePriceText by remember(defaultAlkaline) { mutableStateOf(defaultAlkaline.toInt().toString()) }
 
     LazyColumn(
         modifier = modifier
@@ -288,6 +292,64 @@ fun SahodScreen(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     MathRow("Gross Commission", formatPeso(summary.grossCommission))
                     MathRow("Less: Vale / Cash Advance", "-${formatPeso(summary.valeDeduction)}")
+                }
+            }
+        }
+
+        // Price Settings para sa Purified at Alkaline
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Water Price Settings (Purified & Alkaline)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Current: Purified ${formatPeso(defaultPurified)} · Alkaline ${formatPeso(defaultAlkaline)}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = purifiedPriceText,
+                            onValueChange = { purifiedPriceText = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                            label = { Text("Purified (₱)") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = alkalinePriceText,
+                            onValueChange = { alkalinePriceText = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                            label = { Text("Alkaline (₱)") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Button(
+                            onClick = {
+                                val pur = purifiedPriceText.toDoubleOrNull() ?: defaultPurified
+                                val alk = alkalinePriceText.toDoubleOrNull() ?: defaultAlkaline
+                                viewModel.updateDefaultPrices(pur, alk)
+                            }
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null)
+                            Text("Save Prices", modifier = Modifier.padding(start = 4.dp))
+                        }
+                    }
                 }
             }
         }
